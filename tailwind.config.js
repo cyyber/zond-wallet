@@ -70,10 +70,25 @@ module.exports = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "active-account-in": {
+          "0%": { opacity: 0, height: "0rem" },
+          "100%": { opacity: 1, height: "16rem" },
+        },
+        "appear-in": {
+          "0%": { opacity: 0 },
+          "100%": { opacity: 1 },
+        },
+        "rotate-scale": {
+          "0%, 100%": { transform: "scale(1.5) rotate(360deg)" },
+          "50%": { transform: "scale(4) rotate(180deg)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "active-account-in": "active-account-in 1s ease 1",
+        "appear-in": "appear-in 1s ease 1",
+        "rotate-scale": "rotate-scale 80s infinite ease-in-out",
       },
     },
   },

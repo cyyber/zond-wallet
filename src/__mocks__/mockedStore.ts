@@ -1,12 +1,7 @@
 import { StoreType } from "@/stores/store";
 import deepmerge from "deepmerge";
 import { createContext, useContext } from "react";
-
-type IsObject<T> = T extends object ? true : false;
-type DeepPartial<T> = {
-  [P in keyof T]?: IsObject<T[P]> extends true ? DeepPartial<T[P]> : T[P];
-};
-type OverrideStoreType = DeepPartial<StoreType>;
+import type { PartialDeep } from "type-fest";
 
 const mockedStoreValues: StoreType = {
   settingsStore: { isDarkMode: true, theme: "dark" },
@@ -29,14 +24,17 @@ const mockedStoreValues: StoreType = {
     fetchZondConnection: async () => {},
     getAccountBalance: (accountAddress: string) => {
       accountAddress;
-      return "0 QRL";
+      return "0 ZND";
     },
     initializeBlockchain: async () => {},
     selectBlockchain: async (selectedBlockchain: string) => {
       selectedBlockchain;
     },
     setActiveAccount: async () => {},
-    signAndSendTransaction: async (
+    getNativeTokenGas: async () => {
+      return "";
+    },
+    signAndSendNativeToken: async (
       from: string,
       to: string,
       value: number,
@@ -49,10 +47,54 @@ const mockedStoreValues: StoreType = {
       return { transactionReceipt: undefined, error: "" };
     },
     validateActiveAccount: async () => {},
+    getGasFeeData: async () => {
+      return {
+        baseFeePerGas: BigInt(0),
+        maxFeePerGas: BigInt(0),
+        maxPriorityFeePerGas: "0",
+      };
+    },
+    getZrc20TokenDetails: async () => ({
+      token: undefined,
+      error: "",
+    }),
+    getZrc20TokenGas: async (
+      from: string,
+      to: string,
+      value: number,
+      contractAddress: string,
+      decimals: number,
+    ) => {
+      from;
+      to;
+      value;
+      contractAddress;
+      decimals;
+      return "";
+    },
+    signAndSendZrc20Token: async (
+      from: string,
+      to: string,
+      value: number,
+      mnemonicPhrases: string,
+      contractAddress: string,
+      decimals: number,
+    ) => {
+      from;
+      to;
+      value;
+      mnemonicPhrases;
+      contractAddress;
+      decimals;
+      return { transactionReceipt: undefined, error: "" };
+    },
+    storeProviderState: async () => {},
   },
 };
 
-export const mockedStore = (overrideStoreValues: OverrideStoreType = {}) => {
+export const mockedStore = (
+  overrideStoreValues: PartialDeep<StoreType> = {},
+) => {
   return deepmerge(mockedStoreValues, overrideStoreValues) as StoreType;
 };
 const StoreContext = createContext(mockedStore);

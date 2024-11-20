@@ -1,4 +1,7 @@
 import { ZOND_PROVIDER } from "@/configuration/zondConfig";
+import { DAppRequestType } from "@/scripts/middlewares/middlewareTypes";
+import { BaseProvider } from "@theqrl/zond-wallet-provider/providers";
+import { PartialDeep } from "type-fest";
 import browser from "webextension-polyfill";
 
 const ACTIVE_PAGE_IDENTIFIER = "ACTIVE_PAGE";
@@ -6,12 +9,24 @@ const BLOCKCHAIN_SELECTION_IDENTIFIER = "BLOCKCHAIN_SELECTION";
 const ACTIVE_ACCOUNT_IDENTIFIER = "ACTIVE_ACCOUNT";
 const ACCOUNT_LIST_IDENTIFIER = "ACCOUNT_LIST";
 const TRANSACTION_VALUES_IDENTIFIER = "TRANSACTION_VALUES";
+const TOKENS_LIST_IDENTIFIER = "TOKENS_LIST";
+const DAPP_REQUEST_DATA_IDENTIFIER = "DAPP_REQUEST_DATA";
+const PROVIDER_STATE_IDENTIFIER = "PROVIDER_STATE";
 
 type BlockchainType = keyof typeof ZOND_PROVIDER;
 type TransactionValuesType = {
   receiverAddress?: string;
   amount?: number;
   mnemonicPhrases?: string;
+  tokenDetails?: {
+    isZrc20Token: boolean;
+    tokenContractAddress: string;
+    tokenDecimals: number;
+    tokenIcon: string;
+    tokenBalance: string;
+    tokenName: string;
+    tokenSymbol: string;
+  };
 };
 
 /**
@@ -30,7 +45,7 @@ class StorageUtil {
     const transactionValuesWithDefaultValues = {
       receiverAddress: transactionValues.receiverAddress ?? "",
       amount: transactionValues.amount ?? 0,
-      mnemonicPhrases: "",
+      tokenDetails: transactionValues.tokenDetails,
     };
     await browser.storage.local.set({
       [transactionValuesIdentifier]: transactionValuesWithDefaultValues,
@@ -39,7 +54,7 @@ class StorageUtil {
 
   static async getTransactionValues(blockchain: string) {
     const transactionValuesIdentifier = `${blockchain}_${TRANSACTION_VALUES_IDENTIFIER}`;
-    let transactionValues = {
+    let transactionValues: TransactionValuesType = {
       receiverAddress: "",
       amount: 0,
       mnemonicPhrases: "",
@@ -49,7 +64,10 @@ class StorageUtil {
       transactionValuesIdentifier,
     );
     if (storedTransactionValues) {
-      transactionValues = storedTransactionValues[transactionValuesIdentifier];
+      transactionValues = {
+        ...transactionValues,
+        ...storedTransactionValues[transactionValuesIdentifier],
+      };
     }
 
     return transactionValues;
@@ -61,7 +79,7 @@ class StorageUtil {
   }
 
   /**
-   * A function for storing the accounts created and imported within the zond wallet extension.
+   * A function for storing the accounts created and imported within the zond web3 wallet extension.
    * Call the getAccountList function to retrieve the stored value.
    */
   static async setAccountList(blockchain: string, accountList: string[]) {
@@ -132,7 +150,7 @@ class StorageUtil {
 
   /**
    * A function for storing the route to be displayed on opening the extension.
-   * Call the getActivePage function to retrieve the stored value.
+   * Call the getActivePage function to retrieve the stored value, and clearActivePage for clearing the stored value.
    */
   static async setActivePage(activePage: string) {
     if (activePage) {
@@ -147,6 +165,122 @@ class StorageUtil {
       ACTIVE_PAGE_IDENTIFIER,
     );
     return (storedActivePage?.[ACTIVE_PAGE_IDENTIFIER] ?? "") as string;
+  }
+
+  static async clearActivePage() {
+    await browser.storage.local.remove(ACTIVE_PAGE_IDENTIFIER);
+  }
+
+  /**
+   * A function for storing the list of imported tokens.
+   * Call the getTokenContractsList function to retrieve the stored value, and clearFromTokenList for clearing the stored value.
+   */
+  static async setTokenContractsList(
+    blockchain: string,
+    accountAddress: string,
+    contractAddress: string,
+  ) {
+    const tokensListIdentifier = `${blockchain}_${TOKENS_LIST_IDENTIFIER}_${accountAddress.toUpperCase()}`;
+    let storedTokensList = await this.getTokenContractsList(
+      blockchain,
+      accountAddress,
+    );
+    storedTokensList.push(contractAddress);
+
+    await browser.storage.local.set({
+      [tokensListIdentifier]: Array.from(new Set(storedTokensList)),
+    });
+  }
+
+  static async getTokenContractsList(
+    blockchain: string,
+    accountAddress: string,
+  ) {
+    const tokensListIdentifier = `${blockchain}_${TOKENS_LIST_IDENTIFIER}_${accountAddress.toUpperCase()}`;
+    const storedTokensList =
+      await browser.storage.local.get(tokensListIdentifier);
+
+    return (storedTokensList?.[tokensListIdentifier] ?? []) as string[];
+  }
+
+  static async clearFromTokenContractsList(
+    blockchain: string,
+    accountAddress: string,
+    contractAddress: string,
+  ) {
+    const tokensListIdentifier = `${blockchain}_${TOKENS_LIST_IDENTIFIER}_${accountAddress.toUpperCase()}`;
+    let storedTokensList = await this.getTokenContractsList(
+      blockchain,
+      accountAddress,
+    );
+
+    await browser.storage.local.set({
+      [tokensListIdentifier]: Array.from(
+        new Set(
+          storedTokensList.filter((address) => address !== contractAddress),
+        ),
+      ),
+    });
+  }
+
+  /**
+   * A function for storing the reuqest info temporarily by the dApp, which will be read by the zond web3 wallet.
+   * Call the getDAppRequestData function to retrieve the stored value, and clearFromTokenList for clearing the stored value.
+   */
+  static async setDAppRequestData(data: DAppRequestType) {
+    const blockChain = await this.getBlockChain();
+    const dAppRequestDataIdentifier = `${blockChain}_${DAPP_REQUEST_DATA_IDENTIFIER}`;
+    await browser.storage.session.set({
+      [dAppRequestDataIdentifier]: data,
+    });
+  }
+
+  static async getDAppRequestData() {
+    const blockChain = await this.getBlockChain();
+    const dAppRequestDataIdentifier = `${blockChain}_${DAPP_REQUEST_DATA_IDENTIFIER}`;
+    const storedDAppRequestData = await browser.storage.session.get(
+      dAppRequestDataIdentifier,
+    );
+    return storedDAppRequestData[dAppRequestDataIdentifier] as
+      | DAppRequestType
+      | undefined;
+  }
+
+  static async clearDAppRequestData() {
+    const blockChain = await this.getBlockChain();
+    const dAppRequestDataIdentifier = `${blockChain}_${DAPP_REQUEST_DATA_IDENTIFIER}`;
+    await browser.storage.session.remove(dAppRequestDataIdentifier);
+  }
+
+  /**
+   * A function for storing the provider state of wallet.
+   * This will be fetched as the initial state of the wallet provider, via the 'initialStateMiddleware' middleware.
+   * Call the getProviderState function to retrieve the stored value, and clearFromTokenList for clearing the stored value.
+   */
+  static async setProviderState(
+    providerState: PartialDeep<Parameters<BaseProvider["_initializeState"]>[0]>,
+  ) {
+    const blockChain = await this.getBlockChain();
+    const providerStateIdentifier = `${blockChain}_${PROVIDER_STATE_IDENTIFIER}`;
+    const storedProviderState = await this.getProviderState();
+    await browser.storage.local.set({
+      [providerStateIdentifier]: { ...storedProviderState, ...providerState },
+    });
+  }
+
+  static async getProviderState() {
+    const blockChain = await this.getBlockChain();
+    const providerStateIdentifier = `${blockChain}_${PROVIDER_STATE_IDENTIFIER}`;
+    const storedProviderState = await browser.storage.local.get(
+      providerStateIdentifier,
+    );
+    const providerStateObject = storedProviderState[providerStateIdentifier]
+      ? storedProviderState[providerStateIdentifier]
+      : {};
+    return {
+      ...{ accounts: [], chainId: "", isUnlocked: false, networkVersion: "" },
+      ...providerStateObject,
+    } as Parameters<BaseProvider["_initializeState"]>[0];
   }
 }
 
